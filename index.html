@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Visor de Respuestas de Prácticas</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --primary: #0f766e;
+      --primary-hover: #115e59;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --tag-bg: #e0f2fe;
+      --tag-text: #0369a1;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 24px;
+      margin: 0;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      padding: 28px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+      border: 1px solid var(--border);
+    }
+    h1 {
+      font-size: 1.35rem;
+      margin-top: 0;
+      color: var(--primary);
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .filters-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+      background: #f1f5f9;
+      padding: 16px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+    }
+    label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+    select {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background-color: #fff;
+      font-size: 0.95rem;
+      color: var(--text);
+    }
+    select:disabled {
+      background-color: #e2e8f0;
+      cursor: not-allowed;
+    }
+    #respuestas-container {
+      margin-top: 24px;
+    }
+    .respuesta-card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--primary);
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    .estudiante-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .estudiante-nombre {
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--text);
+    }
+    .estudiante-gm {
+      background: var(--tag-bg);
+      color: var(--tag-text);
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+    .respuesta-texto {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-size: 0.95rem;
+      color: #334155;
+      background-color: #f8fafc;
+      padding: 12px;
+      border-radius: 4px;
+      border: 1px solid #edf2f7;
+    }
+    .meta-info {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+    .loading {
+      color: var(--text-muted);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Consulta y Análisis de Respuestas de Prácticas</h1>
+
+  <div class="filters-grid">
+    <div class="form-group">
+      <label for="select-practica">1. Seleccionar Práctica:</label>
+      <select id="select-practica">
+        <option value="">Cargando prácticas...</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="select-sesion">2. Seleccionar Sesión:</label>
+      <select id="select-sesion" disabled>
+        <option value="">Selecciona primero una práctica...</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="select-pregunta">3. Seleccionar Pregunta:</label>
+      <select id="select-pregunta" disabled>
+        <option value="">Selecciona primero una sesión...</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="respuestas-container"></div>
+</div>
+
+<script>
+  window.addEventListener('DOMContentLoaded', () => {
+    google.script.run
+      .withSuccessHandler(cargarPracticas)
+      .withFailureHandler(mostrarError)
+      .obtenerPracticas();
+
+    document.getElementById('select-practica').addEventListener('change', alCambiarPractica);
+    document.getElementById('select-sesion').addEventListener('change', alCambiarSesion);
+    document.getElementById('select-pregunta').addEventListener('change', alCambiarPregunta);
+  });
+
+  function cargarPracticas(practicas) {
+    const sel = document.getElementById('select-practica');
+    sel.innerHTML = '<option value="">-- Selecciona una práctica --</option>';
+    practicas.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.nombre;
+      sel.appendChild(opt);
+    });
+  }
+
+  function alCambiarPractica() {
+    const idPrac = document.getElementById('select-practica').value;
+    const selSes = document.getElementById('select-sesion');
+    const selPreg = document.getElementById('select-pregunta');
+    limpiarContenedorRespuestas();
+
+    selPreg.innerHTML = '<option value="">Selecciona primero una sesión...</option>';
+    selPreg.disabled = true;
+
+    if (!idPrac) {
+      selSes.innerHTML = '<option value="">Selecciona primero una práctica...</option>';
+      selSes.disabled = true;
+      return;
+    }
+
+    selSes.disabled = true;
+    selSes.innerHTML = '<option value="">Cargando sesiones...</option>';
+
+    google.script.run
+      .withSuccessHandler(sesiones => {
+        selSes.innerHTML = '<option value="">-- Selecciona una sesión --</option>';
+        sesiones.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s;
+          opt.textContent = 'Sesión ' + s;
+          selSes.appendChild(opt);
+        });
+        selSes.disabled = false;
+      })
+      .withFailureHandler(mostrarError)
+      .obtenerSesiones(idPrac);
+  }
+
+  function alCambiarSesion() {
+    const idPrac = document.getElementById('select-practica').value;
+    const ses = document.getElementById('select-sesion').value;
+    const selPreg = document.getElementById('select-pregunta');
+    limpiarContenedorRespuestas();
+
+    if (!idPrac || !ses) {
+      selPreg.innerHTML = '<option value="">Selecciona primero una sesión...</option>';
+      selPreg.disabled = true;
+      return;
+    }
+
+    selPreg.disabled = true;
+    selPreg.innerHTML = '<option value="">Cargando preguntas...</option>';
+
+    google.script.run
+      .withSuccessHandler(preguntas => {
+        selPreg.innerHTML = '<option value="">-- Selecciona una pregunta --</option>';
+        preguntas.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id_enunciado;
+          opt.textContent = p.enunciado;
+          selPreg.appendChild(opt);
+        });
+        selPreg.disabled = false;
+      })
+      .withFailureHandler(mostrarError)
+      .obtenerPreguntas(idPrac, ses);
+  }
+
+  function alCambiarPregunta() {
+    const idEnunciado = document.getElementById('select-pregunta').value;
+    const cont = document.getElementById('respuestas-container');
+    limpiarContenedorRespuestas();
+
+    if (!idEnunciado) return;
+
+    cont.innerHTML = '<p class="loading">Recuperando y ordenando respuestas por grupo GM...</p>';
+
+    google.script.run
+      .withSuccessHandler(renderizarRespuestas)
+      .withFailureHandler(mostrarError)
+      .consultarRespuestas(idEnunciado);
+  }
+
+  function renderizarRespuestas(respuestas) {
+    const cont = document.getElementById('respuestas-container');
+    cont.innerHTML = '';
+
+    if (!respuestas || respuestas.length === 0) {
+      cont.innerHTML = '<p class="loading">No existen respuestas registradas para esta pregunta.</p>';
+      return;
+    }
+
+    const header = document.createElement('div');
+    header.className = 'meta-info';
+    header.textContent = 'Total de respuestas encontradas: ' + respuestas.length;
+    cont.appendChild(header);
+
+    respuestas.forEach(r => {
+      const card = document.createElement('div');
+      card.className = 'respuesta-card';
+
+      const head = document.createElement('div');
+      head.className = 'estudiante-header';
+
+      const nombre = document.createElement('span');
+      nombre.className = 'estudiante-nombre';
+      nombre.textContent = r.nombre;
+
+      const gm = document.createElement('span');
+      gm.className = 'estudiante-gm';
+      gm.textContent = 'Grupo: ' + (r.gm || 'N/A');
+
+      head.appendChild(nombre);
+      head.appendChild(gm);
+
+      const texto = document.createElement('div');
+      texto.className = 'respuesta-texto';
+      texto.textContent = r.respuesta || '(Sin contenido)';
+
+      card.appendChild(head);
+      card.appendChild(texto);
+      cont.appendChild(card);
+    });
+  }
+
+  function limpiarContenedorRespuestas() {
+    document.getElementById('respuestas-container').innerHTML = '';
+  }
+
+  function mostrarError(err) {
+    const cont = document.getElementById('respuestas-container');
+    cont.innerHTML = '<p style="color: #b91c1c;">Error en la consulta: ' + (err.message || err) + '</p>';
+  }
+</script>
+</body>
+</html>
